@@ -19,8 +19,8 @@ export default function App() {
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
 
-    // Modals state
-    const [showAuthModal, setShowAuthModal] = useState(!token);
+    // Modals state (Login modal disabled by default)
+    const [showAuthModal, setShowAuthModal] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [activeLesson, setActiveLesson] = useState(null);
     const [activeHardQuiz, setActiveHardQuiz] = useState(null);
@@ -50,15 +50,51 @@ export default function App() {
         return () => clearInterval(checkSchedule);
     }, []);
 
-    // Fetch user data when token changes
+    // Ensure an active token exists automatically (Auto-login guest explorer)
     useEffect(() => {
-        if (token) {
+        if (!token) {
+            autoLoginGuest();
+        } else {
             fetchUserData();
             fetchCurriculum();
-        } else {
-            setShowAuthModal(true);
         }
     }, [token]);
+
+    const autoLoginGuest = async () => {
+        try {
+            const guestUsername = 'AI_Explorer';
+            const guestPassword = 'quest_password_2026';
+
+            // Try login first
+            let res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: guestUsername, password: guestPassword })
+            });
+
+            if (!res.ok) {
+                // Register if guest doesn't exist yet
+                res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: guestUsername,
+                        password: guestPassword,
+                        knowledgeLevel: 'basics',
+                        goalRole: 'AI Explorer'
+                    })
+                });
+            }
+
+            const data = await res.json();
+            if (data.token) {
+                localStorage.setItem('ai_quest_token', data.token);
+                setToken(data.token);
+            }
+        } catch (err) {
+            console.error('Auto guest login error:', err);
+        }
+    };
 
     const fetchUserData = async () => {
         try {
@@ -69,7 +105,6 @@ export default function App() {
                 const data = await res.json();
                 setUserProfile(data);
             } else {
-                // Expired token
                 localStorage.removeItem('ai_quest_token');
                 setToken('');
             }
@@ -93,7 +128,6 @@ export default function App() {
         }
     };
 
-    // Auth operations
     const handleLogin = async ({ username, password }) => {
         const res = await fetch('/api/auth/login', {
             method: 'POST',
@@ -120,14 +154,13 @@ export default function App() {
         localStorage.setItem('ai_quest_token', data.token);
         setToken(data.token);
         setShowAuthModal(false);
-        setShowOnboarding(true); // Show onboarding for new user!
     };
 
     const handleLogout = () => {
         localStorage.removeItem('ai_quest_token');
         setToken('');
         setUserProfile(null);
-        setShowAuthModal(true);
+        autoLoginGuest();
     };
 
     // Onboarding completion
